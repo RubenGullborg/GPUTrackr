@@ -144,45 +144,50 @@ function App() {
         </div>
       </section>
 
+      <div className="results-summary">
+        {filteredGpus.length > 0 && (
+          <p>Viser {filteredGpus.length} grafikkort {filters.brand && `fra ${filters.brand}`} {filters.model && `i ${filters.model} serien`}</p>
+        )}
+      </div>
+
       <section className="gpu-list">
         {loading ? (
           <div className="loading">Indlæser...</div>
         ) : filteredGpus.length > 0 ? (
-          <table>
-            <thead>
-              <tr>
-                <th>Navn</th>
-                <th>Brand</th>
-                <th>Model</th>
-                <th>Pris</th>
-                <th>Lager</th>
-                <th>Butik</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredGpus.map((gpu) => (
-                <tr key={gpu._id}>
-                  <td>{gpu.name}</td>
-                  <td>{gpu.brand}</td>
-                  <td>{gpu.model}</td>
-                  <td>{gpu.currentPrice} kr.</td>
-                  <td className={gpu.inStock ? "in-stock" : "out-of-stock"}>
+          <div className="gpu-grid">
+            {filteredGpus.map((gpu) => (
+              <div key={gpu._id} className="gpu-card">
+                <div className="gpu-header">
+                  <span className="retailer-badge">{gpu.retailer}</span>
+                  <span className={`stock-badge ${gpu.inStock ? "in-stock" : "out-of-stock"}`}>
                     {gpu.inStock ? "På lager" : "Ikke på lager"}
-                  </td>
-                  <td>
-                    <a
-                      href={gpu.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shop-link"
-                    >
-                      {gpu.retailer}
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </span>
+                </div>
+                
+                <h2 className="gpu-title" title={gpu.name}>{gpu.name}</h2>
+                
+                <div className="gpu-details">
+                  <div className="brand-model">
+                    <span className="brand">{gpu.brand}</span>
+                    <span className="model-chip">{gpu.model}</span>
+                  </div>
+                  
+                  <div className="price-container">
+                    <span className="price">{gpu.currentPrice.toLocaleString('da-DK')} kr.</span>
+                  </div>
+                  
+                  <a
+                    href={gpu.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shop-button"
+                  >
+                    Se hos {gpu.retailer}
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="no-results">
             Ingen GPU'er matcher de valgte filtre
