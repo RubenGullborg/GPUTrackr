@@ -81,6 +81,24 @@ class GpuController {
             });
         }
     }
+
+    async getGpusByModel(req, res) {
+        try {
+            const { modelName } = req.params;
+            
+            const gpus = await gpuService.getAllGpus({ 
+                model: modelName 
+            });
+            
+            res.json(gpus);
+        } catch (error) {
+            logger.error(`Fejl i getGpusByModel controller for model ${req.params.modelName}:`, error);
+            res.status(500).json({ 
+                success: false, 
+                error: 'Fejl ved hentning af GPU\'er for den angivne model' 
+            });
+        }
+    }
 }
 
 module.exports = new GpuController();

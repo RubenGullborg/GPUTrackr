@@ -50,6 +50,33 @@ class ScraperController {
             });
         }
     }
+
+    async scrapeModel(req, res) {
+        try {
+            const { modelName } = req.params;
+            
+            if (!modelName) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Model navn parameter mangler'
+                });
+            }
+            
+            const results = await scraperService.scrapeForModel(modelName);
+            
+            res.json({
+                success: true,
+                model: modelName,
+                results
+            });
+        } catch (error) {
+            logger.error(`Fejl i scrapeModel controller for model ${req.params.modelName}:`, error);
+            res.status(500).json({ 
+                success: false, 
+                error: 'Fejl ved scraping af model' 
+            });
+        }
+    }
 }
 
 module.exports = new ScraperController();
