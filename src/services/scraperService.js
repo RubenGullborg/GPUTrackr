@@ -1,4 +1,5 @@
 const proshopScraper = require('../scrapers/proshop');
+const elgigantenScraper = require("../scrapers/elgigantenScraper");
 const { gpuMarketUrls } = require('../data/productUrls');
 const logger = require('../utils/logger');
 
@@ -6,6 +7,7 @@ const logger = require('../utils/logger');
 function getScraperForRetailer(retailerName) {
   const retailerMap = {
     'Proshop.dk': proshopScraper,
+    'Elgiganten.dk': elgigantenScraper,
     // Tilføj flere scrapere her som du implementerer dem
   };
   
@@ -16,13 +18,16 @@ class ScraperService {
   // Scrape alle forhandlere
   async scrapeAllRetailers() {
     try {
-      // Foreløbig kun Proshop, men let at tilføje flere senere
+      // Kør alle scrapere parallelt
       const results = await Promise.allSettled([
-        proshopScraper.scrapeProductList()
+        proshopScraper.scrapeProductList(),
+        elgigantenScraper.scrapeProductList()
       ]);
       
       return results.map((result, index) => {
-        const retailer = index === 0 ? proshopScraper.retailerName : 'Unknown';
+        // Map index til den korrekte scraper
+        const retailer = index === 0 ? proshopScraper.retailerName : 
+                        index === 1 ? elgigantenScraper.retailerName : 'Unknown';
         return {
           retailer,
           success: result.status === 'fulfilled',
@@ -45,6 +50,8 @@ class ScraperService {
       
       if (urlDomain.includes('proshop.dk')) {
         scraper = proshopScraper;
+      } else if (urlDomain.includes('elgiganten.dk')) {
+        scraper = elgigantenScraper;
       }
       // Tilføj flere forhandlere her
       
