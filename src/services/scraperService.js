@@ -1,4 +1,10 @@
-const { scrapeProshop, scrapeSingleProduct } = require('../scrapers/proshop');
+const {
+  scrapeProshop,
+  scrapeSingleProduct,
+  scrapeProshopForModel,
+} = require("../scrapers/proshop");
+
+const { gpuMarketUrls } = require("../data/productUrls");
 const logger = require('../utils/logger');
 
 class ScraperService {

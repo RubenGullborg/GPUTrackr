@@ -1,10 +1,116 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 const Gpu = require("../models/gpu");
+const { gpuMarketUrls } = require("../data/productUrls");
 
 const RETAILER = "Proshop";
 const BASE_URL = "https://www.proshop.dk";
 const GPU_LIST_URL = `${BASE_URL}/grafikkort`;
+
+
+async function scrapeProshopForModel(gpuModelKey) {
+  console.log(`Starting Proshop scrape for GPU model: ${gpuModelKey}...`);
+
+  // 1. Find the Proshop URL for the given GPU model
+  const proshopEntry = gpuMarketUrls[gpuModelKey]?.find(
+    (entry) => entry.retailer.toLowerCase() === RETAILER.toLowerCase()
+  );
+
+  if (!proshopEntry || !proshopEntry.url) {
+    console.error(
+      `No URL found for ${RETAILER} and GPU model ${gpuModelKey} in gpuMarketUrls. Skipping.`
+    );
+    return 0; // Return 0 products found
+  }
+
+  const gpuListUrl = proshopEntry.url; // This is the specific URL from your gpuMarketUrls.js
+  const baseUrl = new URL(gpuListUrl).origin; // Dynamically get base URL from the list URL
+
+  console.log(`Scraping GPU list from: ${gpuListUrl}`);
+
+  try {
+    const response = await axios.get(gpuListUrl);
+    const $ = cheerio.load(response.data);
+
+    const productLinks = new Set(); // Use a Set to avoid duplicate links
+
+    // --- SELECTOR FOR PRODUCT LINKS ON PROSHOP CATEGORY/SEARCH PAGE ---
+    // This selector finds individual product cards or list items.
+    // It needs to be robust for Proshop's structure.
+    // Example: '.site-product-list .product-display-item a.site-product-link'
+    // Or, as in your original code: $(".site-product-list .site-product-list-item")
+    // You need to inspect Proshop's page for the correct selector that gives you links to individual product pages.
+    // Let's use a common pattern, adjust if needed.
+    $(
+      'div.site-product-list-item a.site-product-link[href*="/Grafikkort/"]'
+    ).each((index, element) => {
+      const link = $(element).attr("href");
+      if (link) {
+        // Ensure the link is absolute
+        const absoluteLink = link.startsWith("http") ? link : baseUrl + link;
+        // Optional: Add a filter here if the search page returns irrelevant items
+        // For example, check if the link text or a nearby element contains the gpuModelKey
+        // const productName = $(element).find('.site-product-title').text().trim();
+        // if (productName.includes(gpuModelKey.replace(/\s/g, ''))) { // Simple check
+        productLinks.add(absoluteLink);
+        // }
+      }
+    });
+    // Fallback or alternative selector if the above doesn't work well for all Proshop pages
+    if (productLinks.size === 0) {
+      $(".site-product-list .site-product-list-item .site-product-link").each(
+        (index, element) => {
+          const path = $(element).attr("href");
+          if (path && path.includes("/Grafikkort/")) {
+            // Ensure it's a graphics card link
+            const absoluteLink = path.startsWith("http")
+              ? path
+              : baseUrl + path;
+            productLinks.add(absoluteLink);
+          }
+        }
+      );
+    }
+
+    console.log(
+      `Found ${productLinks.size} unique product links for ${gpuModelKey} from ${RETAILER}.`
+    );
+
+    const scrapedGpus = [];
+    let count = 0;
+    for (const link of productLinks) {
+      // Optional: Limit the number of products scraped per model for testing
+      // if (count >= 5) { // Scrape a max of 5 products per model for testing
+      //   console.log(`Reached test limit for ${gpuModelKey} on ${RETAILER}.`);
+      //   break;
+      // }
+      const product = await scrapeSingleProduct(link, RETAILER); // Pass RETAILER explicitly
+      if (product) {
+        scrapedGpus.push(product);
+      }
+      count++;
+    }
+
+    console.log(
+      `Successfully scraped ${scrapedGpus.length} GPUs for ${gpuModelKey} from ${RETAILER}.`
+    );
+    return scrapedGpus.length; // Return the count of successfully scraped products
+  } catch (error) {
+    console.error(
+      `Error scraping ${RETAILER} for GPU model ${gpuModelKey} from ${gpuListUrl}:`,
+      error.message
+    );
+    return 0; // Return 0 on error
+  }
+}
+
+
+
+
+
+
+
+
 
 // Funktion til at scrape et enkelt produkt
 async function scrapeSingleProduct(url) {
@@ -105,54 +211,38 @@ async function scrapeSingleProduct(url) {
 // Funktion til at scrape alle GPU'er fra Proshop
 async function scrapeProshop() {
   try {
-    console.log(`Starter scraping af ${RETAILER}...`);
-    const response = await axios.get(GPU_LIST_URL);
+    const response = await axios.get('https://www.proshop.dk/grafikkort');
     const $ = cheerio.load(response.data);
-
-    const gpuLinks = [];
     const gpus = [];
 
-    // Find links til alle GPU produktsider
-    $(".site-product-list .site-product-list-item").each((index, element) => {
-      try {
-        // Produktnavn fra listevisning - bruges kun til filtrering
-        const nameInList = $(element).find(".site-product-title").text().trim();
-        
-        // Kun fortsæt hvis navnet indeholder "RTX" eller "Radeon" for at filtrere GPU'er
-        if (nameInList && (nameInList.includes("RTX") || nameInList.includes("Radeon"))) {
-          // Produktlink
-          const urlPath = $(element).find(".site-product-title a").attr("href");
-          const url = urlPath ? (urlPath.startsWith("http") ? urlPath : BASE_URL + urlPath) : "";
-          
-          if (url) {
-            gpuLinks.push(url);
-          }
-        }
-      } catch (itemError) {
-        console.error(`Fejl ved parsing af produktlink:`, itemError);
+    $('.site-product-list-item').each(async (_, element) => {
+      const name = $(element).find('.site-product-title').text().trim();
+      const price = parseFloat($(element).find('.site-currency-attention').text().replace(/[^0-9,]/g, '').replace(',', '.'));
+      const url = $(element).find('a').attr('href');
+      const inStock = $(element).find('.site-stock-label').text().includes('På lager');
+
+      if (name && price) {
+        const gpu = new Gpu({
+          name,
+          model: extractModel(name), // Hjælpefunktion til at udtrække model
+          brand: extractBrand(name), // Hjælpefunktion til at udtrække brand
+          retailer: 'Proshop',
+          url,
+          currentPrice: price,
+          inStock,
+          lastUpdated: new Date()
+        });
+
+        await gpu.save();
+        gpus.push(gpu);
       }
     });
 
-    console.log(`Fandt ${gpuLinks.length} GPU-links fra ${RETAILER}`);
-    
-    // Besøg hver produktside for mere detaljer
-    for (const url of gpuLinks.slice(0, 10)) { // Begræns til 10 for test
-      try {
-        const product = await scrapeSingleProduct(url);
-        if (product) {
-          gpus.push(product);
-        }
-      } catch (productError) {
-        console.error(`Fejl ved scraping af produkt (${url}):`, productError);
-      }
-    }
-
-    console.log(`Fandt ${gpus.length} GPU'er fra ${RETAILER}`);
-    return gpus.length;
+    return gpus;
   } catch (error) {
-    console.error(`Fejl ved scraping af ${RETAILER}:`, error);
-    throw error;
+    console.error('Fejl ved scraping af Proshop:', error);
+    return [];
   }
 }
 
-module.exports = { scrapeProshop, scrapeSingleProduct };
+module.exports = { scrapeProshop, scrapeSingleProduct, scrapeProshopForModel };
